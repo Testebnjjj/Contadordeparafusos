@@ -190,14 +190,16 @@ wss.on('connection', (ws, req) => {
       return;
     }
 
-    // ── Relay: App → ESP32 (comandos) ─────────────────
+    // ── Relay: App → ESP32 (comandos) e Viewers (info) ────
     if (role === 'app') {
+      // Envia também para viewers que estejam exibindo estado
+      broadcastToViewers(data);
       if (espSocket && espSocket.readyState === WebSocket.OPEN) {
         const { key, ...cmdClean } = data;
         safeSend(espSocket, cmdClean);
       } else {
         safeSend(ws, { esp_status: 'offline' });
-        console.warn('[APP] Comando ignorado — ESP32 offline');
+        console.warn('[APP] Comando recebido, mas ESP32 offline — apenas exibido para viewers');
       }
       return;
     }
