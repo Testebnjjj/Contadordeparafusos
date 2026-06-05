@@ -1682,6 +1682,7 @@ var State={
   ws:null, connected:false, motorOn:false, sel:'M6',
   stock:Object.assign({M3:0,M4:0,M6:0,M8:0},cfg.stock||{}),
   wUnit:{M3:0.07,M4:0.16,M6:0.55,M8:1.2},
+  remoteSeqMap:{},
   demoT:null, logCount:0,
   rateSamples:[],
   reconAttempt:0, reconTimer:null, reconActive:false, reconCancelled:false,
@@ -2962,6 +2963,11 @@ function _doConnect(ip){
     State.ws.onmessage=function(e){
       try{
         var d=JSON.parse(e.data);
+        if(d.type==='sc' && d.from && typeof d.seq==='number'){
+          var lastSeq = State.remoteSeqMap[d.from] || 0;
+          if(d.seq <= lastSeq) return;
+          State.remoteSeqMap[d.from] = d.seq;
+        }
         // Status do ESP32 enviado pelo servidor relay
         if(d.server_status){
           var bar=document.getElementById('espStatusBar');
@@ -3482,7 +3488,7 @@ document.addEventListener('click',function(e){
       if(typeof renderOpModes==='function') renderOpModes();
     }
   }
-//a
+
   if(isMobile){
     console.log('[PerfPatch] Modo Android/Capacitor ativo — FPS otimizado');
     console.log('[PerfPatch] Cursor loop: no-op | getComputedStyle: cached | BG canvas: ~24fps | V13: MEDIUM');
