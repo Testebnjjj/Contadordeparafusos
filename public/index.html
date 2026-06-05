@@ -1334,7 +1334,10 @@ function resolveServerUrl(value){
   value = value.trim();
   if(/^wss?:\/\//.test(value)) return value.replace(/\/+$/,'') + '/app';
   if(/^https?:\/\//.test(value)) return value.replace(/^http:/,'ws:').replace(/^https:/,'wss:').replace(/\/+$/,'') + '/app';
-  return (location.protocol==='https:'?'wss:':'ws:')+'//'+value.replace(/\/+$/,'')+'/app';
+  var host = value.replace(/\/+$/,'');
+  var isLocal = /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(host);
+  var scheme = (location.protocol==='https:'||location.protocol==='file:'&&!isLocal) ? 'wss:' : 'ws:';
+  return scheme+'//'+host+'/app';
 }
 var SERVER_WS_URL = resolveServerUrl(QUERY_PARAMS.get('server')||QUERY_PARAMS.get('host')||location.host||'localhost:3000');
 
