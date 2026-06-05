@@ -2274,7 +2274,7 @@ function updateCounter(value){
   if(State.metaActive&&State.metaQty) renderMetaProgress(newVal);
   resetJamTimer();
   if(oldVal===newVal){broadcastLiveState();return;}
-  if(newVal>oldVal&&!mirrorApplying&&cfg.autoSalvarAoVivo) salvarAoVivoDelta(newVal-oldVal);
+  if(newVal>oldVal&&!mirrorApplying&&cfg.autoSalvarAoVivo&&WS_ROLE==='app') salvarAoVivoDelta(newVal-oldVal);
   playSound('tick');
   SpeedTracker.record();
   var intensity=SpeedTracker.intensity(),mode=PerfManager.mode();
