@@ -154,7 +154,10 @@ wss.on('connection', (ws, req) => {
         viewers.add(ws);
         console.log('[VIEW] Viewer conectado. Total:', viewers.size);
         // Envia estado do servidor ao viewer
-        safeSend(ws, { server_status: 'online' });
+        safeSend(ws, {
+          server_status: 'online',
+          app_status: appClients.size > 0 ? 'online' : 'offline'
+        });
         // Se tivermos último estado, envia para sincronizar
         if (lastEspData) safeSend(ws, lastEspData);
         return;
