@@ -1411,7 +1411,7 @@ function syncMetaUnitChrome(){
   if(!txt||!btn) return;
   if(State.metaQty&&State.metaQty>0){
     txt.textContent='/ '+State.metaQty+' parafusos';
-    btn.style.display='none';
+    btn.style.display=State.metaActive ? 'none' : 'flex';
   }else{
     txt.textContent='sem meta';
     btn.style.display='flex';
@@ -3505,4 +3505,3 @@ document.addEventListener('click',function(e){
 
 </body>
 </html>
-
