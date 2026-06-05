@@ -260,7 +260,11 @@ wss.on('connection', (ws, req) => {
     // ── Mensagens da bridge → repassa p/ viewers e apps legacy
     if (role === 'bridge') {
       if (data.bridge_status) return;
-      if (data.type === 'app_meta' || data.metaQty !== undefined || data.metaActive !== undefined) {
+      // Só atualiza o cache de meta quando receber uma mensagem explícita
+      // do tipo `app_meta` enviada pela bridge. Isso evita que payloads
+      // de estado genéricos (ex: `state`/`sc`) sobrescrevam a meta
+      // quando estiverem ausentes ou com valores herdados.
+      if (data.type === 'app_meta') {
         latestBridgeMeta = data;
       }
       broadcastToViewers(data, ws);
