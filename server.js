@@ -35,8 +35,13 @@ const server = http.createServer(app);
 const wss    = new WebSocket.Server({ server });
 
 // ── Estado Global ─────────────────────────────────────
-let espSocket  = null;   // socket do ESP32 (único)
-let appClients = new Set(); // sockets dos apps HTML
+let espSocket   = null;   // socket do ESP32 (único)
+let bridgeSocket = null;  // socket da bridge (local.html em modo bridge)
+let viewers     = new Set(); // viewers públicos (public/index.html)
+let appClients  = new Set(); // sockets dos apps HTML (legacy)
+let lastEspData = null;   // último payload recebido do ESP
+
+const CONTROL_KEY = process.env.CONTROL_KEY || 'SC2025_k9m7x3qp';
 
 // ── Utilitários ───────────────────────────────────────
 function safeSend(ws, data) {
@@ -49,17 +54,26 @@ function safeSend(ws, data) {
   }
 }
 
+function broadcastToViewers(data) {
+  const payload = typeof data === 'string' ? data : JSON.stringify(data);
+  for (const v of viewers) safeSend(v, payload);
+}
 function broadcastToApps(data) {
   const payload = typeof data === 'string' ? data : JSON.stringify(data);
-  for (const client of appClients) {
-    safeSend(client, payload);
-  }
+  for (const client of appClients) safeSend(client, payload);
+}
+function broadcastToAllClients(data) {
+  const payload = typeof data === 'string' ? data : JSON.stringify(data);
+  for (const v of viewers) safeSend(v, payload);
+  for (const client of appClients) safeSend(client, payload);
+  if (bridgeSocket) safeSend(bridgeSocket, payload);
 }
 
 function notifyEspStatus(online) {
+  broadcastToViewers({ esp_status: online ? 'online' : 'offline' });
   broadcastToApps({ esp_status: online ? 'online' : 'offline' });
   console.log('[ESP32] Status:', online ? 'ONLINE' : 'OFFLINE',
-              '— apps conectados:', appClients.size);
+              '— viewers:', viewers.size, 'apps:', appClients.size);
 }
 
 // ── Handler de cada nova conexão WebSocket ────────────
@@ -68,7 +82,7 @@ wss.on('connection', (ws, req) => {
   console.log('[WS] Nova conexão de:', ip);
 
   // Papel da conexão (identificado pelo primeiro pacote)
-  let role = null; // 'esp' ou 'app'
+  let role = null; // 'esp', 'bridge', 'view', 'app'
 
   // Ping/pong nativo do WebSocket para manter Railway vivo
   ws.isAlive = true;
@@ -98,48 +112,100 @@ wss.on('connection', (ws, req) => {
 
     // ── Identificação do papel (primeiro pacote JSON) ──
     if (role === null) {
+      // ESP32 identifica com {type:'esp'}
       if (data.type === 'esp') {
         role      = 'esp';
         espSocket = ws;
         console.log('[ESP32] Conectado!');
         notifyEspStatus(true);
-
-        // Avisa apps que ESP32 chegou
-        // (app pode ter conectado antes do ESP32)
         return;
       }
+
+      // Bridge (local.html em modo bridge) — precisa de chave
+      if (data.type === 'bridge') {
+        if (data.key !== CONTROL_KEY) {
+          console.warn('[BRIDGE] Chave inválida de:', ip);
+          try { ws.close(); } catch (e) {}
+          return;
+        }
+        // Se já há uma bridge ativa, fecha-a de forma limpa
+        if (bridgeSocket && bridgeSocket !== ws) {
+          try { bridgeSocket._replaced = true; bridgeSocket.close(); } catch (e) {}
+        }
+        role = 'bridge';
+        bridgeSocket = ws;
+        console.log('[BRIDGE] Bridge conectada.');
+        // Confirmação para o bridge
+        safeSend(ws, { bridge_status: 'ok' });
+        // Reenvia último estado do ESP32 se existir
+        if (lastEspData) safeSend(ws, lastEspData);
+        return;
+      }
+
+      // Viewer público (ex: public/index.html)
+      if (data.type === 'view') {
+        role = 'view';
+        viewers.add(ws);
+        console.log('[VIEW] Viewer conectado. Total:', viewers.size);
+        // Envia estado do esp atual
+        safeSend(ws, { esp_status: espSocket ? 'online' : 'offline' });
+        // Se tivermos último estado, envia para sincronizar
+        if (lastEspData) safeSend(ws, lastEspData);
+        return;
+      }
+
+      // Legacy app (antes: {type:'app'}) — mantém compatibilidade
       if (data.type === 'app') {
         role = 'app';
         appClients.add(ws);
         console.log('[APP] Cliente conectado. Total:', appClients.size);
-
-        // Avisa o app do estado atual do ESP32
         safeSend(ws, { esp_status: espSocket ? 'online' : 'offline' });
+        if (lastEspData) safeSend(ws, lastEspData);
         return;
       }
+
       // Conexão que não se identificou — ignorar até identificar
       console.warn('[WS] Conexão não identificada, tipo:', data.type);
       return;
     }
 
-    // ── Relay: ESP32 → App (dados de sensor/estado) ────
+    // ── Relay: ESP32 → Todos (dados de sensor/estado) ────
     if (role === 'esp') {
-      broadcastToApps(data);
+      // guarda último payload e reenvia para viewers/apps/bridge
+      try { lastEspData = typeof data === 'string' ? data : JSON.stringify(data); } catch (e) { lastEspData = null; }
+      broadcastToAllClients(lastEspData || data);
+      return;
+    }
+
+    // ── Mensagens da bridge → repassa p/ viewers e para o ESP32
+    if (role === 'bridge') {
+      // Ignora confirmações do server
+      if (data.bridge_status) return;
+      // Repassa para viewers (display) e para o ESP32 se houver
+      broadcastToViewers(data);
+      if (espSocket && espSocket.readyState === WebSocket.OPEN) {
+        const { key, ...cmdClean } = data;
+        safeSend(espSocket, cmdClean);
+      }
       return;
     }
 
     // ── Relay: App → ESP32 (comandos) ─────────────────
     if (role === 'app') {
       if (espSocket && espSocket.readyState === WebSocket.OPEN) {
-        // Remove a chave de controle antes de repassar pro ESP32
-        // (ESP32 não precisa dela e economiza bytes na RAM do MicroPython)
         const { key, ...cmdClean } = data;
         safeSend(espSocket, cmdClean);
       } else {
-        // ESP32 não está conectado — avisa o app
         safeSend(ws, { esp_status: 'offline' });
         console.warn('[APP] Comando ignorado — ESP32 offline');
       }
+      return;
+    }
+
+    // ── Viewer messages — normalmente ignorar (read-only)
+    if (role === 'view') {
+      // Viewers are read-only — ignore any incoming messages
+      console.warn('[VIEW] Mensagem recebida de viewer — ignorando');
       return;
     }
   });
@@ -157,6 +223,22 @@ wss.on('connection', (ws, req) => {
     if (role === 'app') {
       appClients.delete(ws);
       console.log('[APP] Cliente removido. Restantes:', appClients.size);
+    }
+
+    if (role === 'view') {
+      viewers.delete(ws);
+      console.log('[VIEW] Viewer removido. Restantes:', viewers.size);
+    }
+
+    if (role === 'bridge') {
+      // Se o bridge que fechou for o ativo, limpa a referência.
+      if (bridgeSocket === ws) {
+        bridgeSocket = null;
+        console.log('[BRIDGE] Bridge desconectada.');
+      } else {
+        // Caso tenha sido substituído por uma nova bridge, não faz nada
+        console.log('[BRIDGE] Bridge antiga desconectou.');
+      }
     }
 
     role = null;
@@ -190,8 +272,9 @@ wss.on('close', () => clearInterval(heartbeatInterval));
 server.listen(PORT, () => {
   console.log('');
   console.log('╔══════════════════════════════════════════╗');
-  console.log('║   SCREWCOUNTER RELAY SERVER  v2.0        ║');
-  console.log('║   Porta:', String(PORT).padEnd(34, ' ') + '║');
+  console.log('║   SCREWCOUNTER RELAY SERVER  v2.1        ║');
+  console.log('║   (Bridge + Viewers)                      ║');
+  console.log('║   Porta:', String(PORT).padEnd(32, ' ') + '║');
   console.log('╚══════════════════════════════════════════╝');
   console.log('');
   console.log('[SERVER] Aguardando ESP32 e App...');
