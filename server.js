@@ -82,7 +82,7 @@ wss.on('connection', (ws, req) => {
   console.log('[WS] Nova conexão de:', ip);
 
   // Papel da conexão (identificado pelo primeiro pacote)
-  let role = null; // 'esp' ou 'app'
+  let role = null; // 'esp', 'bridge', 'view', 'app'
 
   // Ping/pong nativo do WebSocket para manter Railway vivo
   ws.isAlive = true;
@@ -118,7 +118,6 @@ wss.on('connection', (ws, req) => {
         espSocket = ws;
         console.log('[ESP32] Conectado!');
         notifyEspStatus(true);
-        // Reenvia último estado ao novo esp? não aplicável
         return;
       }
 
@@ -273,8 +272,9 @@ wss.on('close', () => clearInterval(heartbeatInterval));
 server.listen(PORT, () => {
   console.log('');
   console.log('╔══════════════════════════════════════════╗');
-  console.log('║   SCREWCOUNTER RELAY SERVER  v2.0        ║');
-  console.log('║   Porta:', String(PORT).padEnd(34, ' ') + '║');
+  console.log('║   SCREWCOUNTER RELAY SERVER  v2.1        ║');
+  console.log('║   (Bridge + Viewers)                      ║');
+  console.log('║   Porta:', String(PORT).padEnd(32, ' ') + '║');
   console.log('╚══════════════════════════════════════════╝');
   console.log('');
   console.log('[SERVER] Aguardando ESP32 e App...');
