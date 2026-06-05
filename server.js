@@ -270,6 +270,12 @@ wss.on('connection', (ws, req) => {
 
     // ── Relay: App → Viewers, bridge e ESP32 se houver comando ────
     if (role === 'app') {
+      // Proteção: não permita que clientes 'app' alterem o estado de meta
+      // no servidor — apenas a bridge local tem autoridade sobre meta.
+      if (data && (data.type === 'app_meta' || data.metaQty !== undefined || data.metaActive !== undefined)) {
+        console.warn('[RELAY] Ignorando atualização de meta recebida de cliente não-bridge');
+        return;
+      }
       broadcastToViewers(data, ws);
       broadcastToApps(data, ws);
       if (bridgeSocket && bridgeSocket.readyState === WebSocket.OPEN && bridgeSocket !== ws) {
