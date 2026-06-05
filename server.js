@@ -143,6 +143,8 @@ wss.on('connection', (ws, req) => {
         console.log('[BRIDGE] Bridge conectada.');
         // Confirmação para o bridge
         safeSend(ws, { bridge_status: 'ok' });
+        // Envia app status para viewers, pois a bridge representa o app local
+        notifyAppStatus(true);
         // Reenvia último estado do ESP32 se existir
         if (lastEspData) safeSend(ws, lastEspData);
         return;
@@ -156,7 +158,7 @@ wss.on('connection', (ws, req) => {
         // Envia estado do servidor ao viewer
         safeSend(ws, {
           server_status: 'online',
-          app_status: appClients.size > 0 ? 'online' : 'offline'
+          app_status: appClients.size > 0 || bridgeSocket ? 'online' : 'offline'
         });
         // Se tivermos último estado, envia para sincronizar
         if (lastEspData) safeSend(ws, lastEspData);
@@ -245,6 +247,7 @@ wss.on('connection', (ws, req) => {
       if (bridgeSocket === ws) {
         bridgeSocket = null;
         console.log('[BRIDGE] Bridge desconectada.');
+        if (appClients.size === 0) notifyAppStatus(false);
       } else {
         // Caso tenha sido substituído por uma nova bridge, não faz nada
         console.log('[BRIDGE] Bridge antiga desconectou.');
