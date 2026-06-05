@@ -1,13 +1,16 @@
 {
-  "name": "screwcounter-server",
+  "name": "contadordeparafusos-relay",
   "version": "1.0.0",
-  "description": "Servidor relay do ScrewCounter - ESP32 + WebSocket",
+  "description": "Servidor relay WebSocket para o Contador de Parafusos",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "ws": "^8.14.2"
+    "ws": "^8.17.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
