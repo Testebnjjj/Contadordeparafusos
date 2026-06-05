@@ -147,8 +147,8 @@ wss.on('connection', (ws, req) => {
         role = 'view';
         viewers.add(ws);
         console.log('[VIEW] Viewer conectado. Total:', viewers.size);
-        // Envia estado do esp atual
-        safeSend(ws, { esp_status: espSocket ? 'online' : 'offline' });
+        // Envia estado do servidor ao viewer
+        safeSend(ws, { server_status: 'online' });
         // Se tivermos último estado, envia para sincronizar
         if (lastEspData) safeSend(ws, lastEspData);
         return;
@@ -159,7 +159,7 @@ wss.on('connection', (ws, req) => {
         role = 'app';
         appClients.add(ws);
         console.log('[APP] Cliente conectado. Total:', appClients.size);
-        safeSend(ws, { esp_status: espSocket ? 'online' : 'offline' });
+        safeSend(ws, { server_status: 'online' });
         if (lastEspData) safeSend(ws, lastEspData);
         return;
       }
@@ -190,16 +190,13 @@ wss.on('connection', (ws, req) => {
       return;
     }
 
-    // ── Relay: App → ESP32 (comandos) e Viewers (info) ────
+    // ── Relay: App → Viewers (info) e ESP32 se disponível ────
     if (role === 'app') {
-      // Envia também para viewers que estejam exibindo estado
+      // Envia para viewers que estejam exibindo estado
       broadcastToViewers(data);
       if (espSocket && espSocket.readyState === WebSocket.OPEN) {
         const { key, ...cmdClean } = data;
         safeSend(espSocket, cmdClean);
-      } else {
-        safeSend(ws, { esp_status: 'offline' });
-        console.warn('[APP] Comando recebido, mas ESP32 offline — apenas exibido para viewers');
       }
       return;
     }
