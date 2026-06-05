@@ -2779,7 +2779,6 @@ function cancelReconnect(){
    SCREW SELECT
 ════════════════════════════════════════════════════════ */
 function selScrew(t,sendToEsp){
-  if(WS_ROLE==='view') return;
   State.sel=t;
   ['M3','M4','M6','M8'].forEach(function(k){
     var btn=document.getElementById('s-'+k);
@@ -2803,7 +2802,6 @@ function selScrew(t,sendToEsp){
    MOTOR
 ════════════════════════════════════════════════════════ */
 function setMotor(s){
-  if(WS_ROLE==='view') return;
   UI.setMotorUI(s);
   if(State.connected){
     send({cmd:'motor',state:s});
@@ -2816,7 +2814,6 @@ function setMotor(s){
    DEMO MODE
 ════════════════════════════════════════════════════════ */
 function startDemo(){
-  if(WS_ROLE==='view') return;
   stopDemo();
   var c=getStableCount();
   State.demoT=setInterval(function(){c++;updateCounter(c);},800);
@@ -2827,7 +2824,6 @@ function stopDemo(){if(State.demoT){clearInterval(State.demoT);State.demoT=null;
    SALVAR / ZERAR / EXPORTAR
 ════════════════════════════════════════════════════════ */
 function salvar(){
-  if(WS_ROLE==='view') return;
   var c=getStableCount();
   if(!c){toast('Nenhum parafuso contado');return;}
   if(cfg.autoSalvarAoVivo){
