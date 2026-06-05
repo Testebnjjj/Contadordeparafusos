@@ -1475,6 +1475,7 @@ function broadcastLiveState(){
   try{
     localStorage.setItem(MIRROR_LS_KEY, payload.ts+'|'+JSON.stringify(payload));
   }catch(e){}
+  sendLiveState();
 }
 function toggleLiveMirror(){
   cfg.liveMirror=!cfg.liveMirror;saveCfg();
@@ -1656,6 +1657,13 @@ var EFFECTS=[
 /* ════════════════════════════════════════════════════════
    ESTADO GLOBAL
 ════════════════════════════════════════════════════════ */
+var WS_ROLE=(function(){
+  var q=new URLSearchParams(location.search);
+  if(q.get('role')==='app'||q.get('mode')==='app') return 'app';
+  if(q.get('role')==='view'||q.get('mode')==='view') return 'view';
+  return location.protocol==='file:' ? 'app' : 'view';
+})();
+
 var State={
   ws:null, connected:false, motorOn:false, sel:'M6',
   stock:Object.assign({M3:0,M4:0,M6:0,M8:0},cfg.stock||{}),
@@ -2777,8 +2785,10 @@ function selScrew(t,sendToEsp){
 ════════════════════════════════════════════════════════ */
 function setMotor(s){
   UI.setMotorUI(s);
-  if(State.connected) send({cmd:'motor',state:s});
-  else{if(s) startDemo(); else stopDemo();}
+  if(State.connected){
+    send({cmd:'motor',state:s});
+    sendLiveState();
+  } else { if(s) startDemo(); else stopDemo(); }
   log('Motor '+(s?'LIGADO':'DESLIGADO'),s?'ok':'err');
 }
 
@@ -2893,6 +2903,18 @@ function toast(msg){
    WEBSOCKET
 ════════════════════════════════════════════════════════ */
 function send(o){if(State.ws&&State.ws.readyState===1) State.ws.send(JSON.stringify(o));}
+function sendLiveState(){
+  if(!State.ws||State.ws.readyState!==1||WS_ROLE!=='app') return;
+  var countEl=document.getElementById('cnt');
+  var weightEl=document.getElementById('wgt');
+  send({
+    type:'state',
+    motor:State.motorOn,
+    count:countEl?parseInt(countEl.textContent,10)||0:0,
+    weight:weightEl?parseFloat(weightEl.textContent)||0:0,
+    selected:State.sel
+  });
+}
 function toggleConn(){State.connected?disc():conn();}
 function _doConnect(ip){
   var btn=document.getElementById('connBtn');
@@ -2907,8 +2929,9 @@ function _doConnect(ip){
       log('Conectado ao servidor!','ok');
       toast('✓ Conectado ao servidor');
       // Identifica este cliente como app para o servidor relay
-      send({type:'app'});
+      send({type:WS_ROLE});
       send({cmd:'select',screw:State.sel});
+      sendLiveState();
       State.reconAttempt=0;State.reconCancelled=false;
       document.getElementById('reconBar').style.display='none';
       clearInterval(State.keepaliveT);
