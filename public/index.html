@@ -2977,6 +2977,77 @@ function _doConnect(ip){
           }
           return;
         }
+        // ── Mensagens de meta (do local via bridge)
+        if(d.type==='app_meta'){
+          if(d.action==='toggle'){
+            State.metaActive = !!d.active;
+            document.getElementById('metaCardWrap')?.classList.toggle('show', State.metaActive);
+          }else if(d.action==='set'){
+            State.metaQty = d.qty;
+            document.getElementById('metaDisp').textContent = d.qty;
+            renderMetaProgress(parseInt(document.getElementById('cnt').textContent)||0);
+          }else if(d.action==='toggleStop'){
+            cfg.metaStop = !!d.enabled;
+            var cb=document.getElementById('metaStopCb');if(cb) cb.className='meta-cb'+(cfg.metaStop?' on':'');
+          }
+          return;
+        }
+        // ── Mensagens de preferências (do local via bridge)
+        if(d.type==='app_pref'){
+          if(d.name==='liveMirror'){
+            cfg.liveMirror = !!d.value;
+            var t=document.getElementById('liveMirrorToggle');
+            if(t) t.classList.toggle('on',!!d.value);
+          }else if(d.name==='autoSalvarAoVivo'){
+            cfg.autoSalvarAoVivo = !!d.value;
+            var t=document.getElementById('autoSalvarToggle');
+            if(t) t.classList.toggle('on',!!d.value);
+          }else if(d.name==='jamActive'){
+            cfg.jamActive = !!d.value;
+            var b=document.getElementById('jamBadge');
+            if(b) b.textContent = cfg.jamActive ? 'ATIVO' : 'OFF';
+          }else if(d.name==='jamSec'){
+            cfg.jamSec = parseInt(d.value,10)||10;
+            var inp=document.getElementById('jamSec');
+            if(inp) inp.value = cfg.jamSec;
+          }else if(d.name==='speed'){
+            cfg.speed = parseInt(d.value,10)||100;
+            var s=document.getElementById('speedSlider');
+            if(s) s.value = cfg.speed;
+            var lbl=document.getElementById('speedVal');
+            if(lbl) lbl.textContent = cfg.speed + '%';
+          }else if(d.name==='selectedScrew'){
+            if(d.value) selScrew(d.value,false);
+          }else if(d.name==='motorOn'){
+            UI.setMotorUI(!!d.value);
+          }
+          return;
+        }
+        // ── Mensagens de ações (do local via bridge)
+        if(d.type==='app_action'){
+          if(d.name==='clearHistory'){
+            State.history=[]; saveHistory(); renderHistory(); updateCharts();
+            log('Histórico limpo (do local)','info');
+          }else if(d.name==='clearCharts'){
+            State.history=[]; saveHistory(); renderHistory(); updateCharts();
+            log('Gráficos zerados (do local)','info');
+          }else if(d.name==='clearStock'){
+            State.stock={M3:0,M4:0,M6:0,M8:0}; cfg.stock=State.stock;
+            UI.renderStock(); if(currentTab==='stats') updateCharts();
+            log('Estoque zerado (do local)','warn');
+          }else if(d.name==='save' || d.name==='saveDelta'){
+            if(d.stock){ State.stock=d.stock; cfg.stock=State.stock; UI.renderStock(); }
+            if(Array.isArray(d.history)){ State.history=d.history; saveHistory(); renderHistory(); }
+            if(currentTab==='stats') updateCharts();
+            log('Estoque sincronizado (do local)','info');
+          }else if(d.name==='resetCounter'){
+            updateCounter(d.cnt||0);
+            document.getElementById('wgt').textContent=parseFloat(d.wgt||0).toFixed(1);
+            UI.setMotorUI(false);
+            log('Contador zerado (do local)','info');
+          }
+          return;
+        }
         // Motor primeiro: sincroniza State.motorOn ANTES de updateCounter
         // Evita que metaStop dispare com estado de motor desatualizado
         var nextMotor = d.motor !== undefined ? d.motor : (d.state !== undefined ? d.state : undefined);
