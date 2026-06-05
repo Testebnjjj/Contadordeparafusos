@@ -1478,7 +1478,7 @@ function initLiveMirror(){
   }
 }
 function broadcastLiveState(){
-  if(mirrorApplying||cfg.liveMirror===false) return;
+  if(WS_ROLE!=='app' || mirrorApplying||cfg.liveMirror===false) return;
   var c=parseInt(document.getElementById('cnt').textContent,10)||0;
   var payload={type:'sc',from:mirrorPeerId,seq:++mirrorSeqOut,ts:Date.now(),cnt:c,sel:State.sel,metaQty:State.metaQty|0,metaActive:!!State.metaActive};
   if(mirrorCh){
