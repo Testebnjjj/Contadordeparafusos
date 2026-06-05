@@ -3023,6 +3023,7 @@ function _doConnect(ip){
             cfg.metaStop = !!d.enabled;
             var cb=document.getElementById('metaStopCb');if(cb) cb.className='meta-cb'+(cfg.metaStop?' on':'');
           }
+          syncMetaUnitChrome();
           return;
         }
         // ── Mensagens de preferências (do local via bridge)
@@ -3098,6 +3099,7 @@ function _doConnect(ip){
           State.metaActive = !!d.metaActive;
           document.getElementById('metaCardWrap')?.classList.toggle('show', State.metaActive);
         }
+        syncMetaUnitChrome();
         if(d.stock){
           // Recebe estoque do local em tempo real, mesmo que todos os valores sejam zero.
           State.stock = Object.assign({M3:0,M4:0,M6:0,M8:0}, d.stock);
