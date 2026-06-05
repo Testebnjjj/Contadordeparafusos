@@ -137,6 +137,13 @@ body{font-family:var(--font);background:var(--bg);color:var(--tx);height:100vh;o
 .scroller{position:relative;z-index:1;height:100vh;overflow-y:auto;overflow-x:hidden;padding:9px;padding-bottom:24px;-webkit-overflow-scrolling:touch}
 .app{max-width:490px;margin:0 auto;display:flex;flex-direction:column;gap:7px;transform-origin:top center}
 
+@media (min-width:1120px) {
+  .app{max-width:1200px;display:grid;grid-template-columns:1.72fr 1fr;gap:14px;align-items:start;}
+  #page-main,#page-stats{width:auto;margin:0;}
+  #page-stats{display:block;}
+  .tabs{grid-column:1 / -1;}
+}
+
 /* ══ CARD ══ */
 .card{background:var(--surf);border-radius:var(--r);border:1px solid var(--bord);transition:background var(--tr),border-color var(--tr);position:relative;overflow:hidden}
 .card::before{content:'';position:absolute;left:0;top:10px;bottom:10px;width:2px;background:var(--bord2);border-radius:2px;transition:background var(--tr)}
@@ -816,7 +823,6 @@ html[data-v13-master="1"] .action-btn.primary:hover,html[data-v13-master="1"] .c
   <!-- TABS -->
   <div class="tabs">
     <button class="tab-btn active rip-host" id="tab-main" onclick="setTab('main')">⚙ Principal</button>
-    <button class="tab-btn rip-host" id="tab-stats" onclick="setTab('stats')">📊 Produção</button>
     <button class="tab-btn rip-host" id="tab-hist" onclick="setTab('hist')">📋 Histórico</button>
   </div>
 
@@ -1027,7 +1033,7 @@ html[data-v13-master="1"] .action-btn.primary:hover,html[data-v13-master="1"] .c
   </div><!-- /page-main -->
 
   <!-- ═══ TAB PRODUÇÃO ═══ -->
-  <div id="page-stats" style="display:none">
+  <div id="page-stats" style="display:block">
 
     <div class="card">
       <div class="card-hd">
@@ -1680,11 +1686,12 @@ function setTab(t){
     setTimeout(function(){sc.classList.remove('v13-tab-burst');},420);
   }
   currentTab=t;
-  ['main','stats','hist'].forEach(function(id){
+  ['main','hist'].forEach(function(id){
     document.getElementById('page-'+id).style.display=(id===t)?'block':'none';
     document.getElementById('tab-'+id).classList.toggle('active',id===t);
   });
-  if(t==='stats') updateCharts();
+  document.getElementById('page-stats').style.display='block';
+  updateCharts();
   if(t==='hist') renderHistory();
 }
 
