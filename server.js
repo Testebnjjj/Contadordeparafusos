@@ -40,6 +40,7 @@ let bridgeSocket = null;  // socket da bridge (local.html em modo bridge)
 let viewers     = new Set(); // viewers públicos (public/index.html)
 let appClients  = new Set(); // sockets dos apps HTML (legacy)
 let lastEspData = null;   // último payload recebido do ESP
+const lastSeqByPeer = new Map(); // dedupe de mensagens sc por bridge
 
 const CONTROL_KEY = process.env.CONTROL_KEY || 'SC2025_k9m7x3qp';
 
@@ -54,19 +55,31 @@ function safeSend(ws, data) {
   }
 }
 
-function broadcastToViewers(data) {
+function broadcastToViewers(data, excludeWs) {
   const payload = typeof data === 'string' ? data : JSON.stringify(data);
-  for (const v of viewers) safeSend(v, payload);
+  for (const v of viewers) {
+    if (v === excludeWs) continue;
+    safeSend(v, payload);
+  }
 }
-function broadcastToApps(data) {
+function broadcastToApps(data, excludeWs) {
   const payload = typeof data === 'string' ? data : JSON.stringify(data);
-  for (const client of appClients) safeSend(client, payload);
+  for (const client of appClients) {
+    if (client === excludeWs) continue;
+    safeSend(client, payload);
+  }
 }
-function broadcastToAllClients(data) {
+function broadcastToAllClients(data, excludeWs) {
   const payload = typeof data === 'string' ? data : JSON.stringify(data);
-  for (const v of viewers) safeSend(v, payload);
-  for (const client of appClients) safeSend(client, payload);
-  if (bridgeSocket) safeSend(bridgeSocket, payload);
+  for (const v of viewers) {
+    if (v === excludeWs) continue;
+    safeSend(v, payload);
+  }
+  for (const client of appClients) {
+    if (client === excludeWs) continue;
+    safeSend(client, payload);
+  }
+  if (bridgeSocket && bridgeSocket !== excludeWs) safeSend(bridgeSocket, payload);
 }
 
 function notifyEspStatus(online) {
@@ -185,28 +198,33 @@ wss.on('connection', (ws, req) => {
     if (role === 'esp') {
       // guarda último payload e reenvia para viewers/apps/bridge
       try { lastEspData = typeof data === 'string' ? data : JSON.stringify(data); } catch (e) { lastEspData = null; }
-      broadcastToAllClients(lastEspData || data);
+      broadcastToAllClients(lastEspData || data, ws);
       return;
     }
 
-    // ── Mensagens da bridge → repassa p/ viewers e para o ESP32
+    // dedupe de payloads sc enviados pela bridge
+    if (role === 'bridge' && data && data.type === 'sc' && typeof data.from === 'string' && typeof data.seq === 'number') {
+      const prevSeq = lastSeqByPeer.get(data.from) || 0;
+      if (data.seq <= prevSeq) return;
+      lastSeqByPeer.set(data.from, data.seq);
+    }
+
+    // ── Mensagens da bridge → repassa p/ viewers e apps legacy
     if (role === 'bridge') {
-      // Ignora confirmações do server
       if (data.bridge_status) return;
-      // Repassa para viewers (display) e para o ESP32 se houver
-      broadcastToViewers(data);
-      if (espSocket && espSocket.readyState === WebSocket.OPEN) {
-        const { key, ...cmdClean } = data;
-        safeSend(espSocket, cmdClean);
-      }
+      broadcastToViewers(data, ws);
+      broadcastToApps(data, ws);
       return;
     }
 
-    // ── Relay: App → Viewers (info) e ESP32 se disponível ────
+    // ── Relay: App → Viewers, bridge e ESP32 se houver comando ────
     if (role === 'app') {
-      // Envia para viewers que estejam exibindo estado
-      broadcastToViewers(data);
-      if (espSocket && espSocket.readyState === WebSocket.OPEN) {
+      broadcastToViewers(data, ws);
+      broadcastToApps(data, ws);
+      if (bridgeSocket && bridgeSocket.readyState === WebSocket.OPEN && bridgeSocket !== ws) {
+        safeSend(bridgeSocket, data);
+      }
+      if (espSocket && espSocket.readyState === WebSocket.OPEN && data.cmd !== undefined) {
         const { key, ...cmdClean } = data;
         safeSend(espSocket, cmdClean);
       }
