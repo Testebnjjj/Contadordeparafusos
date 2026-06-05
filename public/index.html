@@ -2906,8 +2906,8 @@ function _doConnect(ip){
       UI.setConnection(true, location.host);
       log('Conectado ao servidor!','ok');
       toast('✓ Conectado ao servidor');
-      // Identifica este cliente como app/view para o servidor relay
-      send({type:'view'});
+      // Identifica este cliente como app para o servidor relay
+      send({type:'app'});
       send({cmd:'select',screw:State.sel});
       State.reconAttempt=0;State.reconCancelled=false;
       document.getElementById('reconBar').style.display='none';
