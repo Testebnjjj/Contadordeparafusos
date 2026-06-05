@@ -3055,6 +3055,7 @@ function _doConnect(ip){
             if(d.stock){ State.stock=d.stock; cfg.stock=State.stock; UI.renderStock(); }
             if(Array.isArray(d.history)){ State.history=d.history; saveHistory(); renderHistory(); }
             if(currentTab==='stats') updateCharts();
+            if(currentTab==='hist') renderHistory();
             log('Estoque sincronizado (do local)','info');
           }else if(d.name==='resetCounter'){
             updateCounter(d.cnt||0);
