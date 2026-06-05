@@ -1428,7 +1428,7 @@ function applyMirrorInbound(d){
   try{
     if(d.sel&&d.sel!==State.sel) selScrew(d.sel,false);
     var el=document.getElementById('cnt');
-    if(el) el.textContent=String(d.cnt|0);
+    if(el){ el.textContent=String(d.cnt|0); el.setAttribute('data-val', String(d.cnt|0)); }
     var wg=document.getElementById('wgt');
     var wu=State.wUnit[State.sel]||0;
     if(wg) wg.textContent=((d.cnt|0)*wu).toFixed(1);
@@ -2192,19 +2192,21 @@ var CounterEngine=(function(){
   var _token=0;
   return{
     animateDigits:function(newVal,el){
-      var newStr=String(newVal),oldStr=el.textContent.replace(/\D/g,'')||'0';
+      var newStr=String(newVal);
+      var oldStr=(el.getAttribute('data-val')||el.textContent.replace(/\D/g,'')||'0');
       var html='',maxLen=Math.max(oldStr.length,newStr.length);
       var padOld=oldStr.padStart(maxLen,' '),padNew=newStr.padStart(maxLen,' ');
       for(var i=0;i<padNew.length;i++){
         var ch=padNew[i];
-        if(ch===' '){html+='<span style="opacity:0">'+(newStr[0]||'0')+'</span>';}
+        if(ch===' '){html+='<span style="opacity:0">'+(newStr[0]||'0')+'</span>';}        
         else if(padOld[i]!==ch){
           html+='<span style="display:inline-block;position:relative;overflow:hidden;vertical-align:bottom">'+
-                '<span class="digit-out" style="font-family:var(--display);font-size:38px;font-weight:700;line-height:1;color:var(--ac)">'+(padOld[i]||'')+'</span>'+
+                '<span class="digit-out" style="font-family:var(--display);font-size:38px;font-weight:700;line-height:1;color:var(--ac)">'+(padOld[i]||'')+'</span>'+                
                 '<span class="digit-in">'+ch+'</span></span>';
-        } else {html+='<span>'+ch+'</span>';}
+        } else {html+='<span>'+ch+'</span>';}      
       }
       el.innerHTML=html;
+      el.setAttribute('data-val', newStr);
       var tok=++_token;
       setTimeout(function(){if(_token===tok) el.textContent=newStr;},210);
     }
@@ -2268,7 +2270,7 @@ var EffectEngine=(function(){
 ════════════════════════════════════════════════════════ */
 function updateCounter(value){
   var el=document.getElementById('cnt');if(!el) return;
-  var oldVal=parseInt(el.textContent)||0,newVal=parseInt(value)||0;
+  var oldVal=parseInt(el.getAttribute('data-val')||el.textContent.replace(/\D/g,'')||'0',10)||0,newVal=parseInt(value)||0;
   var wgt=document.getElementById('wgt');
   if(wgt) wgt.textContent=(newVal*(State.wUnit[State.sel]||0)).toFixed(1);
   trackRate(newVal);
@@ -2284,6 +2286,7 @@ function updateCounter(value){
   if(mode==='LOW'){
     el.classList.remove('cnt-impact');void el.offsetWidth;el.classList.add('cnt-impact');
     el.textContent=newVal;
+    el.setAttribute('data-val', String(newVal));
     setTimeout(function(){el.classList.remove('cnt-impact');},200);
     broadcastLiveState();
     return;
@@ -2830,6 +2833,7 @@ function salvar(){
   if(cfg.autoSalvarAoVivo){
     if(State.saveDebounceT){clearTimeout(State.saveDebounceT);State.saveDebounceT=null;}
     document.getElementById('cnt').textContent='0';
+    document.getElementById('cnt').setAttribute('data-val','0');
     document.getElementById('wgt').textContent='0.0';
     State.metaReached=false;State.rateSamples=[];
     var rateEl=document.getElementById('rateVal');if(rateEl)rateEl.textContent='–';
@@ -2848,6 +2852,7 @@ function salvar(){
   cfg.stock=State.stock;saveCfg();
   addHistory(State.sel,c,w);
   document.getElementById('cnt').textContent='0';
+  document.getElementById('cnt').setAttribute('data-val','0');
   document.getElementById('wgt').textContent='0.0';
   State.metaReached=false;State.rateSamples=[];
   var rateEl=document.getElementById('rateVal');if(rateEl)rateEl.textContent='–';
@@ -2863,6 +2868,7 @@ function salvar(){
 function zerar(){
   if(!confirm('Zerar contador atual?')) return;
   document.getElementById('cnt').textContent='0';
+  document.getElementById('cnt').setAttribute('data-val','0');
   document.getElementById('wgt').textContent='0.0';
   stopDemo();UI.setMotorUI(false);
   if(State.connected) send({cmd:'reset'});
