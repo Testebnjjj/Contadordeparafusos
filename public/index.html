@@ -2918,18 +2918,12 @@ function _doConnect(ip){
       try{
         var d=JSON.parse(e.data);
         // Status do ESP32 enviado pelo servidor relay
-        if(d.esp_status){
+        if(d.server_status){
           var bar=document.getElementById('espStatusBar');
           if(bar){
             bar.style.display='flex';
-            if(d.esp_status==='online'){
-              bar.style.background='var(--grn-bg)';bar.style.border='1px solid var(--grn2)';bar.style.color='var(--grn)';
-              bar.textContent='● ESP32 conectado e online';
-              toast('✓ ESP32 online!');
-            } else {
-              bar.style.background='var(--red-bg)';bar.style.border='1px solid var(--red)';bar.style.color='var(--red)';
-              bar.textContent='● ESP32 desconectado';
-            }
+            bar.style.background='var(--grn-bg)';bar.style.border='1px solid var(--grn2)';bar.style.color='var(--grn)';
+            bar.textContent='● Servidor conectado';
           }
           return;
         }
