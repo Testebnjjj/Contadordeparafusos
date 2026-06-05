@@ -25,21 +25,21 @@ const PORT = process.env.PORT || 3000;
 // ── Express ───────────────────────────────────────────
 const app = express();
 
-// Serve o index.html em public/ (o app HTML)
-// Serve static files but override root to allow small HTML tweaks
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static files but do NOT let express.static auto-serve index.html
+// so our custom '/' handler (which injects the anti-click script) runs.
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 // Serve '/' explicitly so we can optionally inject small client-side
 // behavior: disable clickable navigation and, for local requests,
 // adopt the `theme-color` meta from the local HTML file.
-app.get('/', (req, res, next) => {
+app.get(['/', '/index.html'], (req, res, next) => {
   const indexPath = path.join(__dirname, 'public', 'index.html');
   fs.readFile(indexPath, 'utf8', (err, html) => {
     if (err) return next(err);
 
     // Detect local/private client IPs (basic checks)
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
-    const isLocal = /(^::1$|^127\.|^10\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(ip) || /localhost/i.test(req.headers.host || '');
+    const isLocal = /(^::1$|^127\.\.|^10\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(ip) || /localhost/i.test(req.headers.host || '');
 
     // If local, try to read a local HTML file to copy its theme-color meta
     if (isLocal) {
@@ -56,14 +56,18 @@ app.get('/', (req, res, next) => {
       }
     }
 
-    // Inject small script before </head> to prevent clicks on interactive elements
-    // for VIEW clients. This blocks local button clicks (so they don't run
-    // handlers locally). Actions still work when sent from the trusted
-    // bridge/local app (local 2.html) because the bridge sends WS messages
-    // to the server which are broadcast to viewers to update UI.
-    const inject = `\n<script>\n// Block clicks on interactive controls (buttons, anchors, elements with onclick)\n(function(){\n  function block(e){\n    try{\n      var el = e.target && (e.target.closest ? e.target.closest('button, a, [onclick], [role="button"], input[type="button"], input[type="submit"]') : null);\n      if(el){\n        e.preventDefault();\n        e.stopImmediatePropagation();\n        e.stopPropagation();\n        return false;\n      }\n    }catch(_){}\n  }\n  // Capture phase prevents inline onclick and other listeners from running\n  document.addEventListener('click', block, true);\n  document.addEventListener('dblclick', block, true);\n  // Also block context menu to avoid right-click actions\n  document.addEventListener('contextmenu', function(e){ e.preventDefault(); }, true);\n})();\n</script>\n`;
+    // When the request is NOT local, inject CSS that disables pointer-events
+    // on interactive controls as a stronger guarantee, plus a capture-phase
+    // script to stop any event handlers. Local requests keep full interactivity.
+    var blockCss = '';
+    var blockScript = `\n<script>\n// Block clicks on interactive controls (buttons, anchors, elements with onclick)\n(function(){\n  function block(e){\n    try{\n      var el = e.target && (e.target.closest ? e.target.closest('button, a, [onclick], [role="button"], input[type="button"], input[type="submit"], .rip-host') : null);\n      if(!el) return;\n      e.preventDefault();\n      e.stopImmediatePropagation();\n      e.stopPropagation();\n      return false;\n    }catch(_){}\n  }\n  document.addEventListener('click', block, true);\n  document.addEventListener('dblclick', block, true);\n  document.addEventListener('pointerdown', block, true);\n  document.addEventListener('touchstart', block, true);\n  document.addEventListener('contextmenu', function(e){ e.preventDefault(); }, true);\n})();\n</script>\n`;
 
-    html = html.replace(/<\/head>/i, inject + '</head>');
+    if (!isLocal) {
+      blockCss = `\n<style>\n  /* Disable pointer events for interactive controls in VIEW served pages */\n  button, a, [onclick], [role="button"], input[type="button"], input[type="submit"], .rip-host {\n    pointer-events: none !important;\n    user-select: none !important;\n  }\n  /* Keep scrolling enabled */\n  .scroller, body { -webkit-user-select: none; }\n</style>\n`;
+      html = html.replace(/<\/head>/i, blockCss + blockScript + '</head>');
+    } else {
+      html = html.replace(/<\/head>/i, blockScript + '</head>');
+    }
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
@@ -83,6 +87,7 @@ let bridgeSocket = null;  // socket da bridge (local.html em modo bridge)
 let viewers     = new Set(); // viewers públicos (public/index.html)
 let appClients  = new Set(); // sockets dos apps HTML (legacy)
 let lastEspData = null;   // último payload recebido do ESP
+let latestBridgeMeta = null; // último estado de meta vindo do bridge
 const lastSeqByPeer = new Map(); // dedupe de mensagens sc por bridge
 
 const CONTROL_KEY = process.env.CONTROL_KEY || 'SC2025_k9m7x3qp';
@@ -217,6 +222,7 @@ wss.on('connection', (ws, req) => {
           app_status: appClients.size > 0 || bridgeSocket ? 'online' : 'offline'
         });
         // Se tivermos último estado, envia para sincronizar
+        if (latestBridgeMeta) safeSend(ws, latestBridgeMeta);
         if (lastEspData) safeSend(ws, lastEspData);
         return;
       }
@@ -255,6 +261,9 @@ wss.on('connection', (ws, req) => {
     // ── Mensagens da bridge → repassa p/ viewers e apps legacy
     if (role === 'bridge') {
       if (data.bridge_status) return;
+      if (data.type === 'app_meta' || data.metaQty !== undefined || data.metaActive !== undefined) {
+        latestBridgeMeta = data;
+      }
       broadcastToViewers(data, ws);
       broadcastToApps(data, ws);
       return;
