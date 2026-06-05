@@ -18,6 +18,7 @@ const express   = require('express');
 const http      = require('http');
 const WebSocket = require('ws');
 const path      = require('path');
+const fs        = require('fs');
 
 const PORT = process.env.PORT || 3000;
 
@@ -25,7 +26,49 @@ const PORT = process.env.PORT || 3000;
 const app = express();
 
 // Serve o index.html em public/ (o app HTML)
+// Serve static files but override root to allow small HTML tweaks
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Serve '/' explicitly so we can optionally inject small client-side
+// behavior: disable clickable navigation and, for local requests,
+// adopt the `theme-color` meta from the local HTML file.
+app.get('/', (req, res, next) => {
+  const indexPath = path.join(__dirname, 'public', 'index.html');
+  fs.readFile(indexPath, 'utf8', (err, html) => {
+    if (err) return next(err);
+
+    // Detect local/private client IPs (basic checks)
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+    const isLocal = /(^::1$|^127\.|^10\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(ip) || /localhost/i.test(req.headers.host || '');
+
+    // If local, try to read a local HTML file to copy its theme-color meta
+    if (isLocal) {
+      const localPath = path.join(__dirname, 'local 2.html');
+      try {
+        const localHtml = fs.readFileSync(localPath, 'utf8');
+        const m = localHtml.match(/<meta[^>]*name=["']theme-color["'][^>]*content=["']([^"']+)["'][^>]*>/i);
+        if (m && m[1]) {
+          // replace theme-color meta in served index.html
+          html = html.replace(/<meta[^>]*name=["']theme-color["'][^>]*>/i, `<meta name="theme-color" content="${m[1]}" id="themeColorMeta">`);
+        }
+      } catch (e) {
+        // ignore if local file not present
+      }
+    }
+
+    // Inject small script before </head> to prevent clicks on interactive elements
+    // for VIEW clients. This blocks local button clicks (so they don't run
+    // handlers locally). Actions still work when sent from the trusted
+    // bridge/local app (local 2.html) because the bridge sends WS messages
+    // to the server which are broadcast to viewers to update UI.
+    const inject = `\n<script>\n// Block clicks on interactive controls (buttons, anchors, elements with onclick)\n(function(){\n  function block(e){\n    try{\n      var el = e.target && (e.target.closest ? e.target.closest('button, a, [onclick], [role="button"], input[type="button"], input[type="submit"]') : null);\n      if(el){\n        e.preventDefault();\n        e.stopImmediatePropagation();\n        e.stopPropagation();\n        return false;\n      }\n    }catch(_){}\n  }\n  // Capture phase prevents inline onclick and other listeners from running\n  document.addEventListener('click', block, true);\n  document.addEventListener('dblclick', block, true);\n  // Also block context menu to avoid right-click actions\n  document.addEventListener('contextmenu', function(e){ e.preventDefault(); }, true);\n})();\n</script>\n`;
+
+    html = html.replace(/<\/head>/i, inject + '</head>');
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  });
+});
 
 // Health check — Railway usa isso pra saber se está vivo
 app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
