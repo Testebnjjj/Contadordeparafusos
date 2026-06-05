@@ -3065,11 +3065,11 @@ function _doConnect(ip){
           document.getElementById('metaCardWrap')?.classList.toggle('show', State.metaActive);
         }
         if(d.stock){
-          // Só sobrescreve estoque local se ESP32 tiver algum dado (>0)
-          // Evita perder dados do localStorage quando ESP32 reinicia com zeros
-          var espTemDados=d.stock&&(d.stock.M3||d.stock.M4||d.stock.M6||d.stock.M8);
-          if(espTemDados){State.stock=d.stock;cfg.stock=d.stock;}
+          // Recebe estoque do local em tempo real, mesmo que todos os valores sejam zero.
+          State.stock = Object.assign({M3:0,M4:0,M6:0,M8:0}, d.stock);
+          cfg.stock = State.stock;
           UI.renderStock();
+          if(currentTab==='stats') updateCharts();
         }
         var selId = d.selected !== undefined ? d.selected : (d.sel !== undefined ? d.sel : undefined);
         if(selId && selId!==State.sel) selScrew(selId,false);
