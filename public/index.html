@@ -1479,7 +1479,7 @@ function initLiveMirror(){
 }
 function broadcastLiveState(){
   if(WS_ROLE!=='app' || mirrorApplying||cfg.liveMirror===false) return;
-  var c=parseInt(document.getElementById('cnt').textContent,10)||0;
+  var c=getStableCount();
   var payload={type:'sc',from:mirrorPeerId,seq:++mirrorSeqOut,ts:Date.now(),cnt:c,sel:State.sel,metaQty:State.metaQty|0,metaActive:!!State.metaActive};
   if(mirrorCh){
     try{ mirrorCh.postMessage(payload); }catch(e){}
@@ -1798,10 +1798,10 @@ function toggleJam(){
 function resetJamTimer(){
   if(State.jamTimer){clearTimeout(State.jamTimer);State.jamTimer=null;}
   if(!cfg.jamActive||!State.motorOn) return;
-  var curCount=parseInt(document.getElementById('cnt').textContent)||0;
+  var curCount=getStableCount();
   State.jamLastCount=curCount;
   State.jamTimer=setTimeout(function(){
-    var cur=parseInt(document.getElementById('cnt').textContent)||0;
+    var cur=getStableCount();
     if(cur===State.jamLastCount&&State.motorOn){
       setMotor(false);
       document.getElementById('jamAlert').classList.add('show');
@@ -2695,7 +2695,7 @@ function toggleMeta(){
     document.getElementById('metaDisp').style.color='var(--tx3)';
     syncMetaUnitChrome();
   } else if(State.metaQty){
-    renderMetaProgress(parseInt(document.getElementById('cnt').textContent)||0);
+    renderMetaProgress(getStableCount());
   }
   broadcastLiveState();
 }
@@ -2707,7 +2707,7 @@ function setMeta(){
   document.getElementById('metaDisp').style.color='var(--ac)';
   syncMetaUnitChrome();
   document.getElementById('metaBadge').textContent='0%';
-  renderMetaProgress(parseInt(document.getElementById('cnt').textContent)||0);
+  renderMetaProgress(getStableCount());
   toast('🎯 Meta: '+v+' parafusos');
   log('Meta definida: '+v+' parafusos','info');
   broadcastLiveState();
@@ -2818,7 +2818,7 @@ function setMotor(s){
 function startDemo(){
   if(WS_ROLE==='view') return;
   stopDemo();
-  var c=parseInt(document.getElementById('cnt').textContent)||0;
+  var c=getStableCount();
   State.demoT=setInterval(function(){c++;updateCounter(c);},800);
 }
 function stopDemo(){if(State.demoT){clearInterval(State.demoT);State.demoT=null;}}
@@ -2828,7 +2828,7 @@ function stopDemo(){if(State.demoT){clearInterval(State.demoT);State.demoT=null;
 ════════════════════════════════════════════════════════ */
 function salvar(){
   if(WS_ROLE==='view') return;
-  var c=parseInt(document.getElementById('cnt').textContent)||0;
+  var c=getStableCount();
   if(!c){toast('Nenhum parafuso contado');return;}
   if(cfg.autoSalvarAoVivo){
     if(State.saveDebounceT){clearTimeout(State.saveDebounceT);State.saveDebounceT=null;}
@@ -2928,14 +2928,19 @@ function toast(msg){
    WEBSOCKET
 ════════════════════════════════════════════════════════ */
 function send(o){if(State.ws&&State.ws.readyState===1) State.ws.send(JSON.stringify(o));}
+function getStableCount(){
+  var el=document.getElementById('cnt');
+  if(!el) return 0;
+  var raw = el.getAttribute('data-val') || el.textContent.replace(/\D/g,'');
+  return parseInt(raw,10)||0;
+}
 function sendLiveState(){
   if(!State.ws||State.ws.readyState!==1||WS_ROLE!=='app') return;
-  var countEl=document.getElementById('cnt');
   var weightEl=document.getElementById('wgt');
   send({
     type:'state',
     motor:State.motorOn,
-    count:countEl?parseInt(countEl.textContent,10)||0:0,
+    count:getStableCount(),
     weight:weightEl?parseFloat(weightEl.textContent)||0:0,
     selected:State.sel
   });
@@ -3007,7 +3012,7 @@ function _doConnect(ip){
               var mb=document.getElementById('metaBadge'); if(mb) mb.textContent='0%';
               var ct=document.getElementById('metaCountTxt'); if(ct) ct.textContent='0 / –';
             } else if(State.metaQty){
-              renderMetaProgress(parseInt(document.getElementById('cnt').textContent)||0);
+              renderMetaProgress(getStableCount());
             }
           }else if(d.action==='set'){
             State.metaQty = d.qty;
@@ -3017,7 +3022,7 @@ function _doConnect(ip){
               State.metaActive = true;
               document.getElementById('metaCardWrap')?.classList.add('show');
             }
-            renderMetaProgress(parseInt(document.getElementById('cnt').textContent)||0);
+            renderMetaProgress(getStableCount());
           }else if(d.action==='toggleStop'){
             cfg.metaStop = !!d.enabled;
             var cb=document.getElementById('metaStopCb');if(cb) cb.className='meta-cb'+(cfg.metaStop?' on':'');
@@ -3091,7 +3096,7 @@ function _doConnect(ip){
         if(nextWeight !== undefined) document.getElementById('wgt').textContent=parseFloat(nextWeight).toFixed(1);
         if(d.metaQty !== undefined){
           State.metaQty = d.metaQty;
-          if(d.metaQty>0) renderMetaProgress(parseInt(document.getElementById('cnt').textContent)||0);
+          if(d.metaQty>0) renderMetaProgress(getStableCount());
         }
         if(d.metaActive !== undefined){
           State.metaActive = !!d.metaActive;
