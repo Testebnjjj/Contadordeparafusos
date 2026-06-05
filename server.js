@@ -76,6 +76,12 @@ function notifyEspStatus(online) {
               '— viewers:', viewers.size, 'apps:', appClients.size);
 }
 
+function notifyAppStatus(online) {
+  broadcastToViewers({ app_status: online ? 'online' : 'offline' });
+  console.log('[APP] Status:', online ? 'ONLINE' : 'OFFLINE',
+              '— viewers:', viewers.size, 'apps:', appClients.size);
+}
+
 // ── Handler de cada nova conexão WebSocket ────────────
 wss.on('connection', (ws, req) => {
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
@@ -161,6 +167,7 @@ wss.on('connection', (ws, req) => {
         console.log('[APP] Cliente conectado. Total:', appClients.size);
         safeSend(ws, { server_status: 'online' });
         if (lastEspData) safeSend(ws, lastEspData);
+        notifyAppStatus(true);
         return;
       }
 
@@ -221,6 +228,7 @@ wss.on('connection', (ws, req) => {
 
     if (role === 'app') {
       appClients.delete(ws);
+      if (appClients.size === 0) notifyAppStatus(false);
       console.log('[APP] Cliente removido. Restantes:', appClients.size);
     }
 
