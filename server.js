@@ -25,10 +25,6 @@ const PORT = process.env.PORT || 3000;
 // ── Express ───────────────────────────────────────────
 const app = express();
 
-// Serve static files but do NOT let express.static auto-serve index.html
-// so our custom '/' handler (which injects the anti-click script) runs.
-app.use(express.static(path.join(__dirname, 'public'), { index: false }));
-
 // Serve '/' explicitly so we can optionally inject small client-side
 // behavior: disable clickable navigation and, for local requests,
 // adopt the `theme-color` meta from the local HTML file.
@@ -73,6 +69,9 @@ app.get(['/', '/index.html'], (req, res, next) => {
     res.send(html);
   });
 });
+
+// Serve static files after the custom index route so viewers receive the injected anti-click HTML.
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 // Health check — Railway usa isso pra saber se está vivo
 app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
