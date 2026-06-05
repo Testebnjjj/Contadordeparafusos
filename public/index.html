@@ -2981,10 +2981,26 @@ function _doConnect(ip){
         if(d.type==='app_meta'){
           if(d.action==='toggle'){
             State.metaActive = !!d.active;
+            if(d.qty !== undefined) State.metaQty = d.qty;
             document.getElementById('metaCardWrap')?.classList.toggle('show', State.metaActive);
+            if(!State.metaActive){
+              document.getElementById('metaDisp').textContent='–';
+              document.getElementById('metaDisp').style.color='var(--tx3)';
+              var fill=document.getElementById('metaFill'); if(fill){fill.style.width='0%'; fill.className='meta-bar-fill';}
+              var pt=document.getElementById('metaPctTxt'); if(pt){pt.textContent='0%'; pt.className='meta-pct-txt';}
+              var mb=document.getElementById('metaBadge'); if(mb) mb.textContent='0%';
+              var ct=document.getElementById('metaCountTxt'); if(ct) ct.textContent='0 / –';
+            } else if(State.metaQty){
+              renderMetaProgress(parseInt(document.getElementById('cnt').textContent)||0);
+            }
           }else if(d.action==='set'){
             State.metaQty = d.qty;
             document.getElementById('metaDisp').textContent = d.qty;
+            document.getElementById('metaDisp').style.color='var(--ac)';
+            if(!State.metaActive){
+              State.metaActive = true;
+              document.getElementById('metaCardWrap')?.classList.add('show');
+            }
             renderMetaProgress(parseInt(document.getElementById('cnt').textContent)||0);
           }else if(d.action==='toggleStop'){
             cfg.metaStop = !!d.enabled;
