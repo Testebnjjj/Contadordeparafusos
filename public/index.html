@@ -2688,6 +2688,7 @@ function playSound(type){
    META
 ════════════════════════════════════════════════════════ */
 function toggleMeta(){
+  if(WS_ROLE!=='app'){ toast('Só leitura: abra com ?role=app para controlar'); return; }
   State.metaActive=!State.metaActive;
   var wrap=document.getElementById('metaCardWrap');if(wrap) wrap.classList.toggle('show',State.metaActive);
   if(!State.metaActive){
@@ -2700,6 +2701,7 @@ function toggleMeta(){
   broadcastLiveState();
 }
 function setMeta(){
+  if(WS_ROLE!=='app'){ toast('Só leitura: abra com ?role=app para controlar'); return; }
   var v=parseInt(document.getElementById('metaInput').value)||0;
   if(v<=0){toast('Digite uma meta válida');return;}
   State.metaQty=v;cfg.metaQty=v;State.metaReached=false;saveCfg();
@@ -2779,6 +2781,7 @@ function cancelReconnect(){
    SCREW SELECT
 ════════════════════════════════════════════════════════ */
 function selScrew(t,sendToEsp){
+  if(WS_ROLE!=='app'){ toast('Só leitura: abra com ?role=app para controlar'); return; }
   State.sel=t;
   ['M3','M4','M6','M8'].forEach(function(k){
     var btn=document.getElementById('s-'+k);
@@ -2802,6 +2805,7 @@ function selScrew(t,sendToEsp){
    MOTOR
 ════════════════════════════════════════════════════════ */
 function setMotor(s){
+  if(WS_ROLE!=='app'){ toast('Só leitura: abra com ?role=app para controlar'); return; }
   UI.setMotorUI(s);
   if(State.connected){
     send({cmd:'motor',state:s});
@@ -2923,7 +2927,20 @@ function toast(msg){
 /* ════════════════════════════════════════════════════════
    WEBSOCKET
 ════════════════════════════════════════════════════════ */
-function send(o){if(State.ws&&State.ws.readyState===1) State.ws.send(JSON.stringify(o));}
+function send(o){
+  if(!State.ws||State.ws.readyState!==1) return;
+  // Always allow the initial role identification message
+  if(o && o.type && o.type===WS_ROLE){
+    State.ws.send(JSON.stringify(o));
+    return;
+  }
+  // Block control messages from viewers — only APP may send commands
+  if(WS_ROLE!=='app'){
+    console.warn('[UI] Bloqueado envio de comando por VIEW:', o && (o.cmd||o.type));
+    return;
+  }
+  State.ws.send(JSON.stringify(o));
+}
 function getStableCount(){
   var el=document.getElementById('cnt');
   if(!el) return 0;
