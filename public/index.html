@@ -1326,8 +1326,17 @@ html[data-v13-master="1"] .action-btn.primary:hover,html[data-v13-master="1"] .c
 /* ════════════════════════════════════════════════════════
    CONFIG & PERSISTÊNCIA
 ════════════════════════════════════════════════════════ */
-// ── URL do servidor relay (auto-detecta o domínio atual) ──────────
-var SERVER_WS_URL = (location.protocol==='https:'?'wss:':'ws:')+'//'+(location.host||'localhost:3000')+'/app';
+// ── URL do servidor relay (auto-detecta o domínio atual)
+//    Permite ?server=seuhost:porta ou ?server=wss://seuhost
+var QUERY_PARAMS = new URLSearchParams(location.search);
+function resolveServerUrl(value){
+  if(!value) return null;
+  value = value.trim();
+  if(/^wss?:\/\//.test(value)) return value.replace(/\/+$/,'') + '/app';
+  if(/^https?:\/\//.test(value)) return value.replace(/^http:/,'ws:').replace(/^https:/,'wss:').replace(/\/+$/,'') + '/app';
+  return (location.protocol==='https:'?'wss:':'ws:')+'//'+value.replace(/\/+$/,'')+'/app';
+}
+var SERVER_WS_URL = resolveServerUrl(QUERY_PARAMS.get('server')||QUERY_PARAMS.get('host')||location.host||'localhost:3000');
 
 var CFG_KEY = 'screwapp_v13';
 var LEGACY_CFG_V12 = 'screwapp_v12';
@@ -1663,6 +1672,8 @@ var WS_ROLE=(function(){
   if(q.get('role')==='view'||q.get('mode')==='view') return 'view';
   return location.protocol==='file:' ? 'app' : 'view';
 })();
+var WS_ROLE_LABEL = WS_ROLE==='app' ? 'APP local' : 'VIEWER';
+var WS_ROLE_HINT  = WS_ROLE==='app' ? 'Modo APP local' : 'Modo VIEWER';
 
 var State={
   ws:null, connected:false, motorOn:false, sel:'M6',
@@ -2920,8 +2931,12 @@ function _doConnect(ip){
   var btn=document.getElementById('connBtn');
   btn.textContent='...';btn.style.opacity='0.5';
   var urlDisplay=document.getElementById('serverUrlDisplay');
-  if(urlDisplay) urlDisplay.textContent='🌐 '+location.host;
-  log('Conectando ao servidor...','info');
+  var serverLabel = SERVER_WS_URL.replace(/^wss?:\/\//,'').replace(/\/app$/,'');
+  if(urlDisplay) urlDisplay.textContent='🌐 '+serverLabel+' — '+WS_ROLE_LABEL;
+  log('Conectando ao servidor... ('+WS_ROLE_HINT+')','info');
+  if(WS_ROLE==='view' && !location.search.includes('role=app') && !location.search.includes('mode=app')) {
+    log('Página aberta em modo VIEW. Abra com ?role=app para usar como app local.','warn');
+  }
   try{
     State.ws=new WebSocket(SERVER_WS_URL);
     State.ws.onopen=function(){
