@@ -2950,9 +2950,19 @@ function _doConnect(ip){
           }
           return;
         }
+        if(d.app_status){
+          var bar=document.getElementById('espStatusBar');
+          if(bar){
+            bar.style.display='flex';
+            bar.style.background='var(--grn-bg)';bar.style.border='1px solid var(--grn2)';bar.style.color='var(--grn)';
+            bar.textContent=d.app_status==='online' ? '● App local conectado' : '● App local desconectado';
+          }
+          return;
+        }
         // Motor primeiro: sincroniza State.motorOn ANTES de updateCounter
         // Evita que metaStop dispare com estado de motor desatualizado
-        if(d.motor!==undefined) UI.setMotorUI(d.motor);
+        var nextMotor = d.motor !== undefined ? d.motor : (d.state !== undefined ? d.state : undefined);
+        if(nextMotor !== undefined) UI.setMotorUI(nextMotor);
         if(d.count!==undefined) updateCounter(d.count);
         if(d.weight!==undefined) document.getElementById('wgt').textContent=parseFloat(d.weight).toFixed(1);
         if(d.stock){
