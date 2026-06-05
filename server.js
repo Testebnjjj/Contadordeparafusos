@@ -1,129 +1,208 @@
 // =====================================================
-//  SCREWCOUNTER - SERVIDOR RELAY
-//  Node.js + WebSocket
-//  Todos conectam em / — tipo identificado pela 1ª mensagem
-//  ESP32 envia: {"type":"esp"}
-//  HTML  envia: {"type":"app"}
+//  SCREWCOUNTER — SERVIDOR RELAY  v2.0
+//  Node.js · Express + ws
+//
+//  Conecta ESP32 ↔ App HTML via WebSocket
+//  Deploy: Railway (ou qualquer Node.js hosting)
+//
+//  COMO FUNCIONA:
+//  1. ESP32 conecta em wss://seu-app.railway.app/
+//     → manda {type:'esp'} no primeiro pacote
+//  2. App HTML conecta em wss://seu-app.railway.app/
+//     → manda {type:'app'} no primeiro pacote
+//  3. Servidor relaya dados ESP32→App e comandos App→ESP32
+//  4. Heartbeat automático a cada 30s mantém Railway vivo
 // =====================================================
 
-const express    = require('express');
-const { WebSocketServer, WebSocket } = require('ws');
-const http       = require('http');
-const path       = require('path');
+const express   = require('express');
+const http      = require('http');
+const WebSocket = require('ws');
+const path      = require('path');
 
-const app    = express();
-const server = http.createServer(app);
+const PORT = process.env.PORT || 3000;
 
-// ─── Serve o HTML (pasta public/) ───────────────────
+// ── Express ───────────────────────────────────────────
+const app = express();
+
+// Serve o index.html em public/ (o app HTML)
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ─── WebSocket Server ────────────────────────────────
-const wss = new WebSocketServer({ server });
+// Health check — Railway usa isso pra saber se está vivo
+app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
 
-let espSocket    = null;
-const appClients = new Set();
+// ── HTTP + WebSocket Server ───────────────────────────
+const server = http.createServer(app);
+const wss    = new WebSocket.Server({ server });
 
-// ─── Chave de controle ───────────────────────────────
-const SECRET_KEY = "SC2025_k9m7x3qp";
+// ── Estado Global ─────────────────────────────────────
+let espSocket  = null;   // socket do ESP32 (único)
+let appClients = new Set(); // sockets dos apps HTML
 
-wss.on('connection', (ws) => {
-    let tipo = null;  // 'esp' ou 'app' — definido pela 1ª mensagem
-
-    ws.on('message', (data) => {
-        const msg = data.toString();
-
-        // ── Identificação inicial (1ª mensagem obrigatória) ──
-        if (!tipo) {
-            try {
-                const parsed = JSON.parse(msg);
-
-                if (parsed.type === 'esp') {
-                    tipo      = 'esp';
-                    espSocket = ws;
-                    console.log('[ESP32] Conectado e identificado!');
-                    broadcastToApps(JSON.stringify({ esp_status: 'online' }));
-
-                } else if (parsed.type === 'app') {
-                    tipo = 'app';
-                    appClients.add(ws);
-                    console.log('[APP] Cliente conectado. Total:', appClients.size);
-                    // Informa status atual do ESP32 ao app que acabou de conectar
-                    ws.send(JSON.stringify({
-                        esp_status: (espSocket && espSocket.readyState === WebSocket.OPEN)
-                            ? 'online' : 'offline'
-                    }));
-
-                } else {
-                    ws.close();
-                }
-            } catch (e) {
-                ws.close();
-            }
-            return;
-        }
-
-        // ── ESP32 → repassa dados pro app ────────────────────
-        if (tipo === 'esp') {
-            if (msg === 'ping') return;
-            console.log('[ESP32 → APP]', msg);
-            broadcastToApps(msg);
-
-        // ── App → valida chave → repassa comando pro ESP32 ───
-        } else if (tipo === 'app') {
-            if (msg === 'ping') return;
-            try {
-                const parsed = JSON.parse(msg);
-
-                if (parsed.cmd && parsed.key !== SECRET_KEY) {
-                    console.warn('[SEGURANÇA] Comando bloqueado — chave inválida.');
-                    return;
-                }
-
-                delete parsed.key;
-                const clean = JSON.stringify(parsed);
-                console.log('[APP → ESP32]', clean);
-
-                if (espSocket && espSocket.readyState === WebSocket.OPEN) {
-                    espSocket.send(clean);
-                } else {
-                    console.warn('[RELAY] ESP32 desconectado — comando ignorado.');
-                }
-            } catch (e) {
-                console.warn('[APP] Mensagem inválida:', msg);
-            }
-        }
-    });
-
-    ws.on('close', () => {
-        if (tipo === 'esp') {
-            espSocket = null;
-            console.log('[ESP32] Desconectado.');
-            broadcastToApps(JSON.stringify({ esp_status: 'offline' }));
-        } else if (tipo === 'app') {
-            appClients.delete(ws);
-            console.log('[APP] Cliente desconectado. Total:', appClients.size);
-        }
-    });
-
-    ws.on('error', (err) => console.error('[WS] Erro:', err.message));
-});
-
-// ─── Broadcast para todos os apps ────────────────────
-function broadcastToApps(message) {
-    appClients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) client.send(message);
-    });
+// ── Utilitários ───────────────────────────────────────
+function safeSend(ws, data) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(typeof data === 'string' ? data : JSON.stringify(data));
+    } catch (e) {
+      console.error('[RELAY] Erro ao enviar:', e.message);
+    }
+  }
 }
 
-// ─── Inicia o servidor ───────────────────────────────
-const PORT = process.env.PORT || 3000;
+function broadcastToApps(data) {
+  const payload = typeof data === 'string' ? data : JSON.stringify(data);
+  for (const client of appClients) {
+    safeSend(client, payload);
+  }
+}
+
+function notifyEspStatus(online) {
+  broadcastToApps({ esp_status: online ? 'online' : 'offline' });
+  console.log('[ESP32] Status:', online ? 'ONLINE' : 'OFFLINE',
+              '— apps conectados:', appClients.size);
+}
+
+// ── Handler de cada nova conexão WebSocket ────────────
+wss.on('connection', (ws, req) => {
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  console.log('[WS] Nova conexão de:', ip);
+
+  // Papel da conexão (identificado pelo primeiro pacote)
+  let role = null; // 'esp' ou 'app'
+
+  // Ping/pong nativo do WebSocket para manter Railway vivo
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+
+  // ── Receber mensagem ─────────────────────────────────
+  ws.on('message', (rawData) => {
+    // Converte Buffer para string se necessário
+    const msg = Buffer.isBuffer(rawData) ? rawData.toString() : String(rawData);
+
+    // Ignorar pings de keepalive (string simples, não JSON)
+    if (msg === 'ping') {
+      safeSend(ws, 'pong'); // responde pro cliente saber que está vivo
+      return;
+    }
+    if (msg === 'pong') return;
+
+    // Tentar parsear JSON
+    let data;
+    try {
+      data = JSON.parse(msg);
+    } catch (e) {
+      // Mensagem não-JSON desconhecida — ignorar silenciosamente
+      console.warn('[WS] Mensagem não-JSON ignorada:', msg.slice(0, 60));
+      return;
+    }
+
+    // ── Identificação do papel (primeiro pacote JSON) ──
+    if (role === null) {
+      if (data.type === 'esp') {
+        role      = 'esp';
+        espSocket = ws;
+        console.log('[ESP32] Conectado!');
+        notifyEspStatus(true);
+
+        // Avisa apps que ESP32 chegou
+        // (app pode ter conectado antes do ESP32)
+        return;
+      }
+      if (data.type === 'app') {
+        role = 'app';
+        appClients.add(ws);
+        console.log('[APP] Cliente conectado. Total:', appClients.size);
+
+        // Avisa o app do estado atual do ESP32
+        safeSend(ws, { esp_status: espSocket ? 'online' : 'offline' });
+        return;
+      }
+      // Conexão que não se identificou — ignorar até identificar
+      console.warn('[WS] Conexão não identificada, tipo:', data.type);
+      return;
+    }
+
+    // ── Relay: ESP32 → App (dados de sensor/estado) ────
+    if (role === 'esp') {
+      broadcastToApps(data);
+      return;
+    }
+
+    // ── Relay: App → ESP32 (comandos) ─────────────────
+    if (role === 'app') {
+      if (espSocket && espSocket.readyState === WebSocket.OPEN) {
+        // Remove a chave de controle antes de repassar pro ESP32
+        // (ESP32 não precisa dela e economiza bytes na RAM do MicroPython)
+        const { key, ...cmdClean } = data;
+        safeSend(espSocket, cmdClean);
+      } else {
+        // ESP32 não está conectado — avisa o app
+        safeSend(ws, { esp_status: 'offline' });
+        console.warn('[APP] Comando ignorado — ESP32 offline');
+      }
+      return;
+    }
+  });
+
+  // ── Fechar conexão ───────────────────────────────────
+  ws.on('close', (code, reason) => {
+    console.log('[WS] Conexão fechada. Papel:', role || 'não-identificado',
+                '| Código:', code);
+
+    if (role === 'esp') {
+      espSocket = null;
+      notifyEspStatus(false);
+    }
+
+    if (role === 'app') {
+      appClients.delete(ws);
+      console.log('[APP] Cliente removido. Restantes:', appClients.size);
+    }
+
+    role = null;
+  });
+
+  // ── Erro de conexão ──────────────────────────────────
+  ws.on('error', (err) => {
+    console.error('[WS] Erro:', err.message, '| Papel:', role || 'não-identificado');
+    // Não precisa fechar manualmente — o evento 'close' vai disparar logo depois
+  });
+});
+
+// ── Heartbeat: verifica conexões mortas a cada 30s ────
+// Isso é CRÍTICO para Railway — o proxy fecha conexões idle.
+// Este ping/pong do protocolo WebSocket (nível binário)
+// é diferente do ping de texto que o app e ESP32 mandam.
+const heartbeatInterval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (!ws.isAlive) {
+      console.log('[HEARTBEAT] Conexão morta detectada — terminando');
+      return ws.terminate();
+    }
+    ws.isAlive = false;
+    ws.ping(); // WebSocket nativo ping frame — cliente responde com pong automático
+  });
+}, 30_000);
+
+wss.on('close', () => clearInterval(heartbeatInterval));
+
+// ── Iniciar servidor ──────────────────────────────────
 server.listen(PORT, () => {
-    console.log('');
-    console.log('╔══════════════════════════════════════╗');
-    console.log('║   SCREWCOUNTER SERVIDOR RODANDO      ║');
-    console.log(`║   Porta: ${PORT}                          ║`);
-    console.log('║   Todos conectam em /                ║');
-    console.log('║   1ª msg: {"type":"esp"} ou "app"    ║');
-    console.log('╚══════════════════════════════════════╝');
-    console.log('');
+  console.log('');
+  console.log('╔══════════════════════════════════════════╗');
+  console.log('║   SCREWCOUNTER RELAY SERVER  v2.0        ║');
+  console.log('║   Porta:', String(PORT).padEnd(34, ' ') + '║');
+  console.log('╚══════════════════════════════════════════╝');
+  console.log('');
+  console.log('[SERVER] Aguardando ESP32 e App...');
+  console.log('[SERVER] Health check: GET /health');
+});
+
+// ── Tratamento de erros não capturados ───────────────
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Erro não capturado:', err.message);
+  // Não mata o processo — Railway já monitora e reinicia se necessário
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Promise rejection não tratada:', reason);
 });
