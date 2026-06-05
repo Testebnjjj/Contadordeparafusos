@@ -22,6 +22,11 @@ const wss = new WebSocketServer({ server });
 let espSocket        = null;        // Conexão do ESP32
 const appClients     = new Set();   // Conexões do HTML/App
 
+// ─── Chave de controle ───────────────────────────────
+// Apenas clientes com essa chave podem enviar comandos ao ESP32.
+// Quem abre o link sem ela vê tudo em tempo real, mas não controla.
+const SECRET_KEY = "SC2025_k9m7x3qp";
+
 wss.on('connection', (ws, req) => {
     const url = req.url;
 
@@ -64,15 +69,37 @@ wss.on('connection', (ws, req) => {
                 ? 'online' : 'offline'
         }));
 
-        // App mandou comando (ligar motor, selecionar tipo...) → repassa pro ESP32
+        // App mandou comando (ligar motor, selecionar tipo...) → valida chave → repassa pro ESP32
         ws.on('message', (data) => {
             const msg = data.toString();
-            console.log('[APP → ESP32]', msg);
 
-            if (espSocket && espSocket.readyState === WebSocket.OPEN) {
-                espSocket.send(msg);
-            } else {
-                console.warn('[RELAY] ESP32 não está conectado, comando ignorado.');
+            // Keepalive ping — deixa passar sem validação
+            if (msg === 'ping') return;
+
+            // Tenta parsear como JSON e verificar a chave
+            try {
+                const parsed = JSON.parse(msg);
+
+                // Bloqueia se não tiver chave correta
+                if (parsed.cmd && parsed.key !== SECRET_KEY) {
+                    console.warn('[SEGURANÇA] Comando bloqueado — chave inválida ou ausente.');
+                    return;
+                }
+
+                // Remove a chave antes de repassar ao ESP32 (ESP32 não precisa dela)
+                delete parsed.key;
+                const clean = JSON.stringify(parsed);
+                console.log('[APP → ESP32]', clean);
+
+                if (espSocket && espSocket.readyState === WebSocket.OPEN) {
+                    espSocket.send(clean);
+                } else {
+                    console.warn('[RELAY] ESP32 não está conectado, comando ignorado.');
+                }
+
+            } catch (e) {
+                // Não é JSON — ignora
+                console.warn('[APP] Mensagem não reconhecida:', msg);
             }
         });
 
